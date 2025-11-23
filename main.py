@@ -73,7 +73,6 @@ class AIEngine:
 
             if eff_score < CONFIG["threshold_effnet"]:
                 response["classification"]["status"] = "NORMAL"
-                # Nếu chắc chắn bình thường, trả về luôn
                 response["findings"].append({
                     "label": "No finding",
                     "confidence_score": round(1.0 - eff_score, 4),
@@ -118,14 +117,12 @@ def health_check():
 
 @app.post("/predict_findings")
 async def api_predict(image: UploadFile = File(...)):
-    # 1. Đọc file ảnh từ request
     try:
         contents = await image.read()
         img_pil = Image.open(io.BytesIO(contents)).convert('RGB')
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"File ảnh không hợp lệ: {str(e)}")
 
-    # 2. Gọi AI xử lý
     return ai_engine.predict(img_pil)
 
 
