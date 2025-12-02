@@ -1,0 +1,47 @@
+services:
+    # AIDIMS AI Service
+    aidims-ai:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: aidims-ai-service
+        ports:
+            - "8000:8000"
+        environment:
+            - PYTHONPATH=/app
+            - PYTHONUNBUFFERED=1
+        volumes:
+            # Mount model directory for persistent models
+            - ./model:/app/model:ro
+            # Mount data directory for testing (optional)
+            - ./data:/app/data:ro
+            # Mount images directory for testing (optional)
+            - ./images:/app/images:ro
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 60s
+        networks:
+            - ai-network
+        # Resource limits (adjust based on your hardware)
+        deploy:
+            resources:
+                limits:
+                    memory: 4G
+                reservations:
+                    memory: 2G
+        # GPU support (uncomment if using GPU)
+        # deploy:
+        #   resources:
+        #     reservations:
+        #       devices:
+        #         - driver: nvidia
+        #           count: 1
+        #           capabilities: [gpu]
+
+networks:
+    ai-network:
+        driver: bridge
