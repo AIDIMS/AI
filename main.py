@@ -12,7 +12,7 @@ from ultralytics import YOLO
 CONFIG = {
     "version": "AIDIMS-v2.0",
     "effnet_path": "model/best_efficientnet_b4.pth",
-    "yolo_path": "model/best_yolov8m.pt",
+    "yolo_path": "model/best_yolov8mV2.pt",
     "threshold_effnet": 0.35,
     "threshold_yolo": 0.25,
     "device": "cuda" if torch.cuda.is_available() else "cpu"
