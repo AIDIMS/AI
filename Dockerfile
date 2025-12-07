@@ -1,25 +1,20 @@
-FROM pytorch/pytorch:2.3.0-cpu
+FROM pytorch/pytorch:2.3.0-cpu-py3.10
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
-    git \
-    gcc \
-    g++ \
-    make \
-    libgl1 \
+    libgl1-mesa-dev \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
-    libxrender1 \
-    ffmpeg \
+    libxrender-dev \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 
-RUN sed -i '/opencv-python-headless/d' requirements.txt
-
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
