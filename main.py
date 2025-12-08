@@ -5,6 +5,7 @@ import cv2
 import timm
 import io
 import os
+import time
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from PIL import Image
 from ultralytics import YOLO
@@ -15,8 +16,11 @@ CONFIG = {
     "yolo_path": "model/best_yolov8mV2.pt",
     "threshold_effnet": 0.35,
     "threshold_yolo": 0.25,
-    "device": "cuda" if torch.cuda.is_available() else "cpu"
+    "device": "cuda" if torch.cuda.is_available() else "cpu",
+    "debug_folder": "debug_images"
 }
+
+os.makedirs(CONFIG["debug_folder"], exist_ok=True)
 
 app = FastAPI(title="AIDIMS AI Service")
 
@@ -26,7 +30,6 @@ class AIEngine:
         print(f"Khởi động AI Engine trên: {CONFIG['device']}...")
         self.device = torch.device(CONFIG["device"])
 
-        # 1. Load EfficientNet-B4 (Sàng lọc)
         self.classifier = None
         if os.path.exists(CONFIG["effnet_path"]):
             print("Loading EfficientNet-B4...")
@@ -36,7 +39,6 @@ class AIEngine:
         else:
             print(f"CẢNH BÁO: Thiếu {CONFIG['effnet_path']}. Bỏ qua bước sàng lọc.")
 
-        # 2. Load YOLOv8 (Chẩn đoán)
         if os.path.exists(CONFIG["yolo_path"]):
             print("   -> Loading YOLOv8m...")
             self.detector = YOLO(CONFIG["yolo_path"])
@@ -51,17 +53,31 @@ class AIEngine:
 
         img_resized = cv2.resize(img_np, (380, 380))
         img_normalized = img_resized.astype(np.float32) / 255.0
-        # [H, W, C] -> [1, C, H, W]
         return torch.tensor(img_normalized).permute(2, 0, 1).unsqueeze(0).to(self.device)
+
+    def save_debug_image(self, img_array, prefix="pred"):
+
+        timestamp = int(time.time() * 1000)
+        filename = f"{prefix}_{timestamp}.jpg"
+        save_path = os.path.join(CONFIG["debug_folder"], filename)
+
+        if img_array.shape[-1] == 3:
+            img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+        else:
+            img_bgr = img_array
+
+        cv2.imwrite(save_path, img_bgr)
+        print(f"Đã lưu ảnh debug tại: {save_path}")
+        return filename
 
     def predict(self, img_pil):
         response = {
             "model_version": CONFIG["version"],
             "classification": {"status": "UNKNOWN", "confidence": 0.0},
-            "findings": []
+            "findings": [],
+            "debug_image": None
         }
 
-        is_abnormal = True
         eff_score = 0.0
 
         if self.classifier:
@@ -78,11 +94,35 @@ class AIEngine:
                     "confidence_score": round(1.0 - eff_score, 4),
                     "bbox_xyxy": [0, 0, 0, 0]
                 })
+
+                img_vis = np.array(img_pil)
+                cv2.putText(img_vis, f"NORMAL ({round(1.0 - eff_score, 2)})", (50, 100),
+                            cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 255, 0), 5)
+
+                saved_name = self.save_debug_image(img_vis, prefix="NORMAL")
+                response["debug_image"] = saved_name
+
                 return response
             else:
                 response["classification"]["status"] = "ABNORMAL"
 
-        results = self.detector.predict(img_pil, conf=CONFIG["threshold_yolo"], verbose=False)[0]
+        results = self.detector.predict(
+            img_pil,
+            conf=CONFIG["threshold_yolo"],
+            imgsz=1024,
+            verbose=False
+        )[0]
+
+        annotated_frame = results.plot(labels=True, boxes=True, font_size=20, line_width=3)
+
+
+        timestamp = int(time.time() * 1000)
+        filename = f"ABNORMAL_{timestamp}.jpg"
+        save_path = os.path.join(CONFIG["debug_folder"], filename)
+        cv2.imwrite(save_path, annotated_frame)
+
+        response["debug_image"] = filename
+        print(f"Đã lưu ảnh YOLO Visualize tại: {save_path}")
 
         if len(results.boxes) == 0:
             response["findings"].append({
@@ -94,7 +134,7 @@ class AIEngine:
             for box in results.boxes:
                 cls_id = int(box.cls[0])
                 conf = float(box.conf[0])
-                coords = box.xyxy[0].tolist()  # [x1, y1, x2, y2]
+                coords = box.xyxy[0].tolist()
                 label_name = results.names[cls_id]
 
                 response["findings"].append({
